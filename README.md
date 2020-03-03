@@ -1,0 +1,2 @@
+# mgc
+minimal graph cut 
