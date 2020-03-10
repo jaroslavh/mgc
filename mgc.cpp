@@ -2,7 +2,6 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include <array>
 #include <algorithm>
 #include <assert.h>
 
@@ -11,10 +10,10 @@
 using namespace std;
 
 float ADJ_MATRIX[160][160] = {};
-array<int, 160> BEST_ARR = {};
+int BEST_ARR[150] = {};
 float BEST_VAL = 100000;
 int RECURSION_CALLS = 0;
-array<int, MAX_VALS> WORK = {};
+int *PTR = NULL;
 
 int n = 0; //number of nodes
 int k = 0; //average node order
@@ -62,7 +61,7 @@ int read_graph_file(char* graph_file)
     }
 }
 
-int sumOccurences(const array<int, MAX_VALS> array, const int val, const int last)
+int sumOccurences(int* array, int val, int last)
 {
     int ret_sum = 0;
     for (int i = 0; i < last; ++i)
@@ -74,33 +73,36 @@ int sumOccurences(const array<int, MAX_VALS> array, const int val, const int las
     return ret_sum;
 }
 
-void print_array(array<int, MAX_VALS> arr, int len)
+void print_array(int* arr, int len)
 {
     for (int j = 0; j < len; j++){
         cout << arr[j] << " ";
     }
     cout << endl;
-
 }
 
-float evaluateCut(const array<int, MAX_VALS> arr, const int len)
+float evaluateCut(int arr[], int len)
 {
     float ret_sum = 0;
-    for (int i = 0; i < len; ++i)
+    int i, j;
+    for (i = 1; i < len; i++)
     {
-        for (int j = 0; j < len; ++j)
+        for (j = 0; j < i; j++)
         {
-            if (j < i && arr[i] != arr[j]) ret_sum += ADJ_MATRIX[j][i];
+            if (arr[i] != arr[j]) ret_sum += ADJ_MATRIX[j][i];
         }
-
     }
     return ret_sum;
 }
 
-void solve(int fill_index, array<int, MAX_VALS> &current_solution)
+void solve(int fill_index, int* current_solution)
 // i is the index to be filled in
 {
     ++RECURSION_CALLS;
+    int curr_ones = sumOccurences(current_solution, 1, fill_index);
+    if (curr_ones > max_ones) return;
+    if (fill_index - curr_ones > n - max_ones) return;
+
     if (fill_index == n){
         float val = evaluateCut(current_solution, n);
         if (val < BEST_VAL)
@@ -116,16 +118,16 @@ void solve(int fill_index, array<int, MAX_VALS> &current_solution)
     if (evaluateCut(current_solution, fill_index) > BEST_VAL) return;
     current_solution[fill_index] = 0;
     int new_index = fill_index + 1;
-    if (sumOccurences(current_solution, 0, new_index) <= n - max_ones) solve(new_index, current_solution);
+    solve(new_index, current_solution);
     current_solution[fill_index] = 1;
-    if (sumOccurences(current_solution, 1, new_index) <= max_ones) solve(new_index, current_solution);
+    solve(new_index, current_solution);
     return;
 }
 
 int main(int argc, char* argv[])
 {
     //TESTS
-    array<int, MAX_VALS> test_arr = {0, 1, 0, 1, 0, 0, 0, 0, 0, 1};
+    int test_arr[10] = {0, 1, 0, 1, 0, 0, 0, 0, 0, 1};
     assert(sumOccurences(test_arr, 1, 10) == 3);
     assert(sumOccurences(test_arr, 0, 10) == 7);
 
@@ -134,8 +136,8 @@ int main(int argc, char* argv[])
     ADJ_MATRIX[1][0] = -1;
     ADJ_MATRIX[1][1] = -10;
     ADJ_MATRIX[0][0] = -10;
-    array<int, MAX_VALS> cutA = {1, 0};
-    array<int, MAX_VALS> cutB = {0, 0};
+    int cutA[2] = {1, 0};
+    int cutB[2] = {0, 0};
     assert(evaluateCut(cutA, 2) == 1);
     assert(evaluateCut(cutB, 2) == 0);
     
@@ -143,7 +145,9 @@ int main(int argc, char* argv[])
     char* filename = argv[1];
 
     read_graph_file(filename);
-    solve(0, WORK);
+    int arr[n] = {};
+    PTR = arr;
+    solve(0, arr);
 
 
     cout << "======================================" << endl;
