@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <assert.h>
+#include <cstring>
 
 #define MAX_VALS 160
 
@@ -81,73 +82,51 @@ void print_array(int* arr, int len)
     cout << endl;
 }
 
-float evaluateCut(int arr[], int len)
+float evaluateNewNode(int arr[], int new_index)
 {
     float ret_sum = 0;
-    int i, j;
-    for (i = 1; i < len; i++)
+    for (int i = 0; i < new_index; ++i)
     {
-        for (j = 0; j < i; j++)
-        {
-            if (arr[i] != arr[j]) ret_sum += ADJ_MATRIX[j][i];
-        }
+        if (arr[i] != arr[new_index]) ret_sum += ADJ_MATRIX[i][new_index];
     }
     return ret_sum;
 }
 
-void solve(int fill_index, int* current_solution)
+void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
 // i is the index to be filled in
 {
     ++RECURSION_CALLS;
-    int curr_ones = sumOccurences(current_solution, 1, fill_index);
-    if (curr_ones > max_ones) return;
-    if (fill_index - curr_ones > n - max_ones) return;
+    if (prev_ones > max_ones) return;
+    if (fill_index - prev_ones > n - max_ones) return;
+
+    float new_val = evaluateNewNode(current_solution, fill_index - 1) + prev_val;
+    if (new_val > BEST_VAL) return;
 
     if (fill_index == n){
-        float val = evaluateCut(current_solution, n);
-        if (val < BEST_VAL)
+        if (new_val < BEST_VAL)
         {
-            BEST_VAL = val;
-            for (int i = 0; i < n; ++i)
-            {
-                BEST_ARR[i] = current_solution[i];
-            }
+            BEST_VAL = new_val;
+            memcpy(BEST_ARR, current_solution, n*sizeof(int));
             return;
         }
     }
-    if (evaluateCut(current_solution, fill_index) > BEST_VAL) return;
+
     current_solution[fill_index] = 0;
-    int new_index = fill_index + 1;
-    solve(new_index, current_solution);
+    solve(fill_index + 1, current_solution, new_val, prev_ones);
     current_solution[fill_index] = 1;
-    solve(new_index, current_solution);
+    solve(fill_index + 1, current_solution, new_val, prev_ones + 1);
     return;
 }
 
 int main(int argc, char* argv[])
 {
-    //TESTS
-    int test_arr[10] = {0, 1, 0, 1, 0, 0, 0, 0, 0, 1};
-    assert(sumOccurences(test_arr, 1, 10) == 3);
-    assert(sumOccurences(test_arr, 0, 10) == 7);
-
-    n = 2;
-    ADJ_MATRIX[0][1] = 1;
-    ADJ_MATRIX[1][0] = -1;
-    ADJ_MATRIX[1][1] = -10;
-    ADJ_MATRIX[0][0] = -10;
-    int cutA[2] = {1, 0};
-    int cutB[2] = {0, 0};
-    assert(evaluateCut(cutA, 2) == 1);
-    assert(evaluateCut(cutB, 2) == 0);
-    
     //SOLUTION
     char* filename = argv[1];
 
     read_graph_file(filename);
     int arr[n] = {};
     PTR = arr;
-    solve(0, arr);
+    solve(0, arr, 0, 0);
 
 
     cout << "======================================" << endl;
