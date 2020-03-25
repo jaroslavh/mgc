@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <assert.h>
 #include <cstring>
+#include <omp.h>
 
 #define MAX_VALS 160
 
@@ -96,6 +97,7 @@ void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
 // i is the index to be filled in
 {
     ++RECURSION_CALLS;
+    int sequential_threshold = 8;
     if (prev_ones > max_ones) return;
     if (fill_index - prev_ones > n - max_ones) return;
 
@@ -105,17 +107,51 @@ void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
     if (fill_index == n){
         if (new_val < BEST_VAL)
         {
-            BEST_VAL = new_val;
-            memcpy(BEST_ARR, current_solution, n*sizeof(int));
+            #pragma omp critical
+            {
+                BEST_VAL = new_val;
+                memcpy(BEST_ARR, current_solution, n*sizeof(int));
+            }
             return;
         }
     }
 
     current_solution[fill_index] = 0;
-    solve(fill_index + 1, current_solution, new_val, prev_ones);
+
+    int arr_0[n] = {};
+    for (int i = 0; i <= fill_index; ++i) arr_0[i] = current_solution[i];
+
+    if (n - fill_index > sequential_threshold){
+        #pragma omp task
+        solve(fill_index + 1, arr_0, new_val, prev_ones);
+    } else {
+        solve(fill_index + 1, arr_0, new_val, prev_ones);
+    }
+
     current_solution[fill_index] = 1;
-    solve(fill_index + 1, current_solution, new_val, prev_ones + 1);
+
+    int arr_1[n];
+    for (int i = 0; i <= fill_index; ++i) arr_1[i] = current_solution[i];
+
+    if (n - fill_index > sequential_threshold){
+        #pragma omp task
+        solve(fill_index + 1, arr_1, new_val, prev_ones + 1);
+    } else {
+        solve(fill_index + 1, arr_1, new_val, prev_ones + 1);
+    }
+    //#pragma omp taskwait
     return;
+}
+
+void ompSolve(int *curr_sol)
+{
+    #pragma omp parallel
+    {
+       #pragma omp single
+       {
+           solve(0, curr_sol, 0, 0);
+       }
+    }
 }
 
 int main(int argc, char* argv[])
@@ -126,7 +162,7 @@ int main(int argc, char* argv[])
     read_graph_file(filename);
     int arr[n] = {};
     PTR = arr;
-    solve(0, arr, 0, 0);
+    ompSolve(arr);
 
 
     cout << "======================================" << endl;
