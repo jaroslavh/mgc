@@ -6,16 +6,16 @@
 #include <assert.h>
 #include <cstring>
 #include <omp.h>
+#include <deque>
+#include <vector>
 
 #define MAX_VALS 160
 
 using namespace std;
 
 float ADJ_MATRIX[160][160] = {};
-int BEST_ARR[150] = {};
 float BEST_VAL = 100000;
-int RECURSION_CALLS = 0;
-int *PTR = NULL;
+vector<int> * BEST_SOLUTION = NULL;
 
 int n = 0; //number of nodes
 int k = 0; //average node order
@@ -63,10 +63,10 @@ int read_graph_file(char* graph_file)
     }
 }
 
-int sumOccurences(int* array, int val, int last)
+int sumOccurences(vector<int> &array, int val)
 {
     int ret_sum = 0;
-    for (int i = 0; i < last; ++i)
+    for (int i = 0; i < array.size(); ++i)
     {
         //assert(array[i] < 2);
         //assert(array[i] >= 0);
@@ -75,17 +75,29 @@ int sumOccurences(int* array, int val, int last)
     return ret_sum;
 }
 
-void print_array(int* arr, int len)
+void print_vector(vector<int> &arr)
 {
-    for (int j = 0; j < len; j++){
-        cout << arr[j] << " ";
+    for (auto j = arr.begin(); j != arr.end(); j++){
+        cout << *j << " ";
     }
     cout << endl;
 }
 
-float evaluateNewNode(int arr[], int new_index)
+float evaluateCutMinus(vector<int> &arr)
 {
     float ret_sum = 0;
+    for (int i = 0; i < arr.size() - 1; ++i) {
+        for (int j = 0; j < i; j++) {
+            if (arr[i] != arr[j]) ret_sum += ADJ_MATRIX[j][i];
+        }
+    }
+    return ret_sum;
+}
+
+float evaluateNewNode(vector<int> &arr)
+{
+    float ret_sum = 0;
+    int new_index = arr.size() -1;
     for (int i = 0; i < new_index; ++i)
     {
         if (arr[i] != arr[new_index]) ret_sum += ADJ_MATRIX[i][new_index];
@@ -93,80 +105,85 @@ float evaluateNewNode(int arr[], int new_index)
     return ret_sum;
 }
 
-void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
-// i is the index to be filled in
+void solve(vector<int> &cur, float prev_val, int prev_ones)
 {
-    ++RECURSION_CALLS;
-    int sequential_threshold = 8;
-    if (prev_ones > max_ones) return;
-    if (fill_index - prev_ones > n - max_ones) return;
+    if (prev_ones > max_ones) { //more ones than allowed
+        delete &cur;
+        return;
+    }
+    if (cur.size() - prev_ones > n - max_ones) { //more zeros than allowed
+        delete &cur;
+        return;
+    }
 
-    float new_val = evaluateNewNode(current_solution, fill_index - 1) + prev_val;
-    if (new_val > BEST_VAL) return;
+    float new_val = evaluateNewNode(cur) + prev_val;
+    if (new_val >= BEST_VAL) {
+        delete &cur;
+        return;
+    }
 
-    if (fill_index == n){
-        if (new_val < BEST_VAL)
+    if (cur.size() == n){
+        #pragma omp critical
         {
-            #pragma omp critical
-            {
-                BEST_VAL = new_val;
-                memcpy(BEST_ARR, current_solution, n*sizeof(int));
-            }
-            return;
+            BEST_VAL = new_val;
+            delete BEST_SOLUTION;
+            BEST_SOLUTION = new vector<int> (cur.begin(), cur.end());
         }
+        delete &cur;
+        return;
     }
 
-    current_solution[fill_index] = 0;
-
-    int arr_0[n] = {};
-    for (int i = 0; i <= fill_index; ++i) arr_0[i] = current_solution[i];
-
-    if (n - fill_index > sequential_threshold){
-        #pragma omp task
-        solve(fill_index + 1, arr_0, new_val, prev_ones);
-    } else {
-        solve(fill_index + 1, arr_0, new_val, prev_ones);
-    }
-
-    current_solution[fill_index] = 1;
-
-    int arr_1[n];
-    for (int i = 0; i <= fill_index; ++i) arr_1[i] = current_solution[i];
-
-    if (n - fill_index > sequential_threshold){
-        #pragma omp task
-        solve(fill_index + 1, arr_1, new_val, prev_ones + 1);
-    } else {
-        solve(fill_index + 1, arr_1, new_val, prev_ones + 1);
-    }
-    //#pragma omp taskwait
+    vector<int> * sol0 = new vector<int>(cur.begin(), cur.end());
+    vector<int> * sol1 = new vector<int>(cur.begin(), cur.end());
+    sol0->push_back(0);
+    sol1->push_back(1);
+    delete &cur;
+        
+    solve(*sol0, new_val, prev_ones);
+    solve(*sol1, new_val, prev_ones + 1);
     return;
 }
 
-void ompSolve(int *curr_sol)
+void generate_states(deque<vector<int>*> &q)
 {
-    #pragma omp parallel
-    {
-       #pragma omp single
-       {
-           solve(0, curr_sol, 0, 0);
-       }
-    }
+    vector<int> * working = q.front();
+    vector<int> * zero = new vector<int>(*working);
+    zero->push_back(0);
+    q.push_back(zero);
+    vector<int> * one = new vector<int>(*working);
+    one->push_back(1);
+    q.push_back(one);
+    q.pop_front();
+    delete working;
 }
 
 int main(int argc, char* argv[])
 {
-    //SOLUTION
+    // reading input filgge
     char* filename = argv[1];
-
     read_graph_file(filename);
-    int arr[n] = {};
-    PTR = arr;
-    ompSolve(arr);
 
+    deque<vector<int> *> q;
+    vector<int> * first = new vector<int>({0});
+    vector<int> * second = new vector<int>({1});
 
+    q.push_back(first);
+    q.push_back(second);
+    while (q.size() < 256) { //index 8
+        generate_states(q);
+    }
+
+    vector<vector<int> *> vect(q.begin(), q.end());
+    int vect_size = vect.size();
+    #pragma omp parallel for
+    for (int i = 0; i < vect_size; ++i) {
+        float val = evaluateCutMinus(*vect[i]);
+        int ones = sumOccurences(*vect[i], 1);
+        solve(*vect[i], val, ones);
+    }
+    // printing result
     cout << "======================================" << endl;
     cout << "Minimal cut: " << BEST_VAL << endl;
-    cout << "Recursion calls: " << RECURSION_CALLS << endl;
+    print_vector(*BEST_SOLUTION);
     return 0;
 }
