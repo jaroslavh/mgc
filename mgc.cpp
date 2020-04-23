@@ -1,26 +1,40 @@
 #include <iostream>
 #include <fstream>
-#include <string>
 #include <vector>
 #include <algorithm>
 #include <assert.h>
 #include <cstring>
 #include <omp.h>
+#include <mpi.h>
 #include <deque>
 #include <vector>
+#include <string>
 
 #define MAX_VALS 160
+#define SIZE 50
 
 using namespace std;
 
 float ADJ_MATRIX[160][160] = {};
 float BEST_VAL = 100000;
-vector<int> * BEST_SOLUTION = NULL;
 
 int n = 0; //number of nodes
 int k = 0; //average node order
 int max_ones = 0; //size of graph partition marked as 1
+int tag_work = 0;
+int tag_done = 1;
+MPI_Status status;
+int tmp_arr[SIZE];
+float result = 1000000;
 
+void print_array(int* arr, int len)
+{
+    for (int j = 0; j < len; j++){
+     //   if (arr[j] == -1) break;
+        cout << arr[j] << " ";
+    }
+    cout << endl;
+}
 
 vector<string> split(const string &str, const char &delim) {
     typedef string::const_iterator iter;
@@ -40,7 +54,7 @@ vector<string> split(const string &str, const char &delim) {
 int read_graph_file(char* graph_file)
 //reads given graph_file and loads its contents to global adjacency matrix
 {
-    cout << "Reading file: " << graph_file << endl;
+    //cout << "Reading file: " << graph_file << endl;
     string line;
     ifstream in_file(graph_file);
     if (in_file.is_open())
@@ -50,7 +64,7 @@ int read_graph_file(char* graph_file)
         n = stoi(x[0]);
         k = stoi(x[1]);
         max_ones = stoi(x[2]);
-        cout << "Parameters are: n=" << n << " k=" << k << " a=" << max_ones << " " << endl; 
+        //cout << "Parameters are: n=" << n << " k=" << k << " a=" << max_ones << " " << endl; 
 
         while(getline(in_file, line))
         {
@@ -61,87 +75,6 @@ int read_graph_file(char* graph_file)
             ADJ_MATRIX[i0][i1] = edge;
         }
     }
-}
-
-int sumOccurences(vector<int> &array, int val)
-{
-    int ret_sum = 0;
-    for (int i = 0; i < array.size(); ++i)
-    {
-        //assert(array[i] < 2);
-        //assert(array[i] >= 0);
-        if (array[i] == val) ret_sum += 1;
-    }
-    return ret_sum;
-}
-
-void print_vector(vector<int> &arr)
-{
-    for (auto j = arr.begin(); j != arr.end(); j++){
-        cout << *j << " ";
-    }
-    cout << endl;
-}
-
-float evaluateCutMinus(vector<int> &arr)
-{
-    float ret_sum = 0;
-    for (int i = 0; i < arr.size() - 1; ++i) {
-        for (int j = 0; j < i; j++) {
-            if (arr[i] != arr[j]) ret_sum += ADJ_MATRIX[j][i];
-        }
-    }
-    return ret_sum;
-}
-
-float evaluateNewNode(vector<int> &arr)
-{
-    float ret_sum = 0;
-    int new_index = arr.size() -1;
-    for (int i = 0; i < new_index; ++i)
-    {
-        if (arr[i] != arr[new_index]) ret_sum += ADJ_MATRIX[i][new_index];
-    }
-    return ret_sum;
-}
-
-void solve(vector<int> &cur, float prev_val, int prev_ones)
-{
-    if (prev_ones > max_ones) { //more ones than allowed
-        delete &cur;
-        return;
-    }
-    if (cur.size() - prev_ones > n - max_ones) { //more zeros than allowed
-        delete &cur;
-        return;
-    }
-
-    float new_val = evaluateNewNode(cur) + prev_val;
-    if (new_val >= BEST_VAL) {
-        delete &cur;
-        return;
-    }
-
-    if (cur.size() == n){
-        #pragma omp critical
-        {
-            BEST_VAL = new_val;
-            delete BEST_SOLUTION;
-            BEST_SOLUTION = new vector<int> (cur.begin(), cur.end());
-        }
-        delete &cur;
-        return;
-    }
-
-    vector<int> * sol0 = new vector<int>(cur.begin(), cur.end());
-    vector<int> * sol1 = new vector<int>(cur.begin(), cur.end());
-    sol0->push_back(0);
-    sol1->push_back(1);
-    delete &cur;
-        
-    solve(*sol0, new_val, prev_ones);
-    solve(*sol1, new_val, prev_ones + 1);
-    return;
 }
 
 void generate_states(deque<vector<int>*> &q)
@@ -157,33 +90,182 @@ void generate_states(deque<vector<int>*> &q)
     delete working;
 }
 
+int * vect2arr(vector<int> &v)
+{
+    int* arr = new int[SIZE];
+    for (int i = 0; i < v.size(); ++i) {
+        arr[i] = v[i];
+    }
+    arr[v.size()] = -1;
+    return arr;
+}
+
+void get_vals(int arr[], int &ones, int &last, float& val)
+{
+    int ones_sum = 0;
+    int index = -1;
+    for (int i = 0; i < n; ++i)
+    {
+        if (arr[i] == -1) {
+            index = i;
+            break;
+        }
+        if (arr[i] == 1) ones_sum += 1;
+    }
+    if (index == -1) last = n;
+    else last = index;
+    ones = ones_sum;
+
+    float ret_sum = 0;
+    for (int i = 0; i < last-1; ++i) {
+        for (int j = 0; j < i; j++) {
+            if (arr[i] != arr[j]) ret_sum += ADJ_MATRIX[j][i];
+        }
+    }
+    val = ret_sum;
+}
+
+float evaluateNewNode(int arr[], int new_index)
+{
+    float ret_sum = 0;
+    for (int i = 0; i < new_index; ++i)
+    {
+        if (arr[i] != arr[new_index]) ret_sum += ADJ_MATRIX[i][new_index];
+    }
+    return ret_sum;
+}
+
+void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
+// i is the index to be filled in
+{
+    int sequential_threshold = 8;
+    if (prev_ones > max_ones) return;
+    if (fill_index - prev_ones > n - max_ones) return;
+
+    float new_val = evaluateNewNode(current_solution, fill_index - 1) + prev_val;
+    if (new_val > BEST_VAL) return;
+
+    if (fill_index == n){
+        if (new_val < BEST_VAL)
+        {
+            #pragma omp critical
+            {
+                BEST_VAL = new_val;
+            }
+            return;
+        }
+    }
+
+    current_solution[fill_index] = 0;
+
+    int arr_0[SIZE] = {};
+    for (int i = 0; i <= fill_index; ++i) arr_0[i] = current_solution[i];
+
+    if (n - fill_index > sequential_threshold){
+        #pragma omp task
+        solve(fill_index + 1, arr_0, new_val, prev_ones);
+    } else {
+        solve(fill_index + 1, arr_0, new_val, prev_ones);
+    }
+
+    current_solution[fill_index] = 1;
+
+    int arr_1[SIZE];
+    for (int i = 0; i <= fill_index; ++i) arr_1[i] = current_solution[i];
+
+    if (n - fill_index > sequential_threshold){
+        #pragma omp task
+        solve(fill_index + 1, arr_1, new_val, prev_ones + 1);
+    } else {
+        solve(fill_index + 1, arr_1, new_val, prev_ones + 1);
+    }
+    //#pragma omp taskwait
+    return;
+}
+
+void ompSolve(int *curr_sol)
+{
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            int index, ones;
+            float val;
+            get_vals(curr_sol, ones, index, val);            
+            solve(index, curr_sol, val, ones);
+        }
+    }
+}
+
 int main(int argc, char* argv[])
 {
-    // reading input filgge
+    MPI_Init(&argc, &argv);
+    int proc_num, num_procs;
+    MPI_Comm_rank(MPI_COMM_WORLD, &proc_num);
+    MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+
+    // reading input file
     char* filename = argv[1];
     read_graph_file(filename);
 
-    deque<vector<int> *> q;
-    vector<int> * first = new vector<int>({0});
-    vector<int> * second = new vector<int>({1});
+    // MASTER PROCESS
+    if (proc_num == 0) {
+        // queue population
+        deque<vector<int> *> q;
+        vector<int> * first = new vector<int>({0});
+        vector<int> * second = new vector<int>({1});
 
-    q.push_back(first);
-    q.push_back(second);
-    while (q.size() < 256) { //index 8
-        generate_states(q);
-    }
+        q.push_back(first);
+        q.push_back(second);
+        while (q.size() < 256) { //index 8
+            generate_states(q);
+        }
 
-    vector<vector<int> *> vect(q.begin(), q.end());
-    int vect_size = vect.size();
-    #pragma omp parallel for
-    for (int i = 0; i < vect_size; ++i) {
-        float val = evaluateCutMinus(*vect[i]);
-        int ones = sumOccurences(*vect[i], 1);
-        solve(*vect[i], val, ones);
+        // initial work distribution
+        for (int dest = 1; dest < num_procs; dest++){
+            int * send;
+            send = vect2arr(*(q.front()));
+            delete q.front();
+            q.pop_front();
+            MPI_Send(send, SIZE, MPI_INT, dest, tag_work, MPI_COMM_WORLD);
+            delete send;
+        }
+        int working_slaves = num_procs - 1;
+
+        // main loop
+        while (working_slaves > 0) {
+            MPI_Recv(&result, 1,  MPI_DOUBLE, MPI_ANY_SOURCE, tag_done, MPI_COMM_WORLD, &status);
+            if (result < BEST_VAL) {
+                BEST_VAL = result;
+            }
+            if (q.size() != 0) {
+                int * send;
+                send = vect2arr(*(q.front()));
+                delete q.front();
+                q.pop_front();
+                MPI_Send(send, SIZE, MPI_INT, status.MPI_SOURCE, tag_work, MPI_COMM_WORLD);
+                delete send;
+            } else {
+                MPI_Send(&tmp_arr, SIZE, MPI_INT, status.MPI_SOURCE, tag_done, MPI_COMM_WORLD);
+                working_slaves--;
+            }
+        }        
+
+        printf("Result %.3f \n", BEST_VAL);
+    //SLAVE PROCESS
+    } else {
+        while (true) {
+            MPI_Recv(&tmp_arr, SIZE, MPI_INT, 0, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
+            if (status.MPI_TAG == tag_done) break;
+            else if(status.MPI_TAG == tag_work) {
+                ompSolve(tmp_arr);
+                MPI_Send(&BEST_VAL, 1, MPI_DOUBLE, 0, tag_done, MPI_COMM_WORLD);
+                BEST_VAL = 1000;
+            }
+        }
     }
-    // printing result
-    cout << "======================================" << endl;
-    cout << "Minimal cut: " << BEST_VAL << endl;
-    print_vector(*BEST_SOLUTION);
+    MPI_Finalize();
+
     return 0;
+
 }
