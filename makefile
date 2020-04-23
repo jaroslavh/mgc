@@ -1,10 +1,10 @@
-CC=g++
-CPPFLAGS=-fopenmp -O3
+CC=mpic++
+CPPFLAGS=-fopenmp -O3 -std=c++11
 mgc: 
 	$(CC) $(CPPFLAGS) mgc.cpp -o mgc 
 
 run:
-	./mgc data/mhr_20_10_5.txt
+	mpirun ./mgc data/mhr_20_10_5.txt
 
 clean:
-	rm mgc mgc.o
+	rm mgc
