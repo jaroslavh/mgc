@@ -1,8 +1,8 @@
 CC=g++
-CFLAGS=-O3
-mgc: mgc.o
-	$(CC) $(CFLAGS) -o mgc mgc.o
+CFLAGS=-std=c++11 -O3 -Wall -pedantic
+mgc:
+	$(CC) $(CFLAGS) -o mgc_seq mgc.cpp
 
 run:
-	./mgc data/mhr_20_10_5.txt
+	./mgc_seq data/mhr_20_10_5.txt
 
