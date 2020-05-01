@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <cstring>
 #include <omp.h>
+#include <ctime>
+#include <sys/time.h>
 
 #define MAX_VALS 160
 
@@ -14,7 +16,6 @@ using namespace std;
 float ADJ_MATRIX[160][160] = {};
 int BEST_ARR[150] = {};
 float BEST_VAL = 100000;
-int RECURSION_CALLS = 0;
 int *PTR = NULL;
 
 int n = 0; //number of nodes
@@ -40,7 +41,7 @@ vector<string> split(const string &str, const char &delim) {
 int read_graph_file(char* graph_file)
 //reads given graph_file and loads its contents to global adjacency matrix
 {
-    cout << "Reading file: " << graph_file << endl;
+    //cout << "Reading file: " << graph_file << endl;
     string line;
     ifstream in_file(graph_file);
     if (in_file.is_open())
@@ -50,7 +51,7 @@ int read_graph_file(char* graph_file)
         n = stoi(x[0]);
         k = stoi(x[1]);
         max_ones = stoi(x[2]);
-        cout << "Parameters are: n=" << n << " k=" << k << " a=" << max_ones << " " << endl; 
+        //cout << "Parameters are: n=" << n << " k=" << k << " a=" << max_ones << " " << endl; 
 
         while(getline(in_file, line))
         {
@@ -96,7 +97,6 @@ float evaluateNewNode(int arr[], int new_index)
 void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
 // i is the index to be filled in
 {
-    ++RECURSION_CALLS;
     int sequential_threshold = 8;
     if (prev_ones > max_ones) return;
     if (fill_index - prev_ones > n - max_ones) return;
@@ -118,7 +118,7 @@ void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
 
     current_solution[fill_index] = 0;
 
-    int arr_0[n] = {};
+    int arr_0[n];
     for (int i = 0; i <= fill_index; ++i) arr_0[i] = current_solution[i];
 
     if (n - fill_index > sequential_threshold){
@@ -143,9 +143,9 @@ void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
     return;
 }
 
-void ompSolve(int *curr_sol)
+void ompSolve(int *curr_sol, int p)
 {
-    #pragma omp parallel
+    #pragma omp parallel num_threads(p)
     {
        #pragma omp single
        {
@@ -158,15 +158,26 @@ int main(int argc, char* argv[])
 {
     //SOLUTION
     char* filename = argv[1];
+    int p = stoi(argv[2]);
 
     read_graph_file(filename);
-    int arr[n] = {};
+
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+    clock_t c_start = std::clock();
+    int arr[n];
     PTR = arr;
-    ompSolve(arr);
+    ompSolve(arr, p);
+    clock_t c_end = std::clock();
+    double cpu_time = 1000*(c_end-c_start) / CLOCKS_PER_SEC;
+    gettimeofday(&end, NULL);
 
+    long real_time = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;
+    //cout << "======================================" << endl;
+    //cout << "Minimal cut: " << BEST_VAL << endl;
+    //cout << "CPU time: " << cpu_time/1000.0 << endl;
+    //cout << "Real time: " << real_time/1000000.0 << endl;
+    cout << cpu_time/1000.0 << ',' << real_time/1000000.0 << endl;
 
-    cout << "======================================" << endl;
-    cout << "Minimal cut: " << BEST_VAL << endl;
-    cout << "Recursion calls: " << RECURSION_CALLS << endl;
     return 0;
 }
