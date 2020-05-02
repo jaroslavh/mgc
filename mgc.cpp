@@ -8,6 +8,8 @@
 #include <omp.h>
 #include <deque>
 #include <vector>
+#include <ctime>
+#include <sys/time.h>
 
 #define MAX_VALS 160
 
@@ -161,7 +163,13 @@ int main(int argc, char* argv[])
 {
     // reading input filgge
     char* filename = argv[1];
+    int p = stoi(argv[2]);
+
     read_graph_file(filename);
+
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
+    clock_t c_start = std::clock();
 
     deque<vector<int> *> q;
     vector<int> * first = new vector<int>({0});
@@ -175,15 +183,18 @@ int main(int argc, char* argv[])
 
     vector<vector<int> *> vect(q.begin(), q.end());
     int vect_size = vect.size();
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(p)
     for (int i = 0; i < vect_size; ++i) {
         float val = evaluateCutMinus(*vect[i]);
         int ones = sumOccurences(*vect[i], 1);
         solve(*vect[i], val, ones);
     }
-    // printing result
-    cout << "======================================" << endl;
+    clock_t c_end = std::clock();
+    double cpu_time = 1000*(c_end-c_start) / CLOCKS_PER_SEC;
+    gettimeofday(&end, NULL);
+
+    long real_time = (end.tv_sec - start.tv_sec) * 1000000 + end.tv_usec - start.tv_usec;
     cout << "Minimal cut: " << BEST_VAL << endl;
-    print_vector(*BEST_SOLUTION);
+    cout << cpu_time/1000.0 << ',' << real_time/1000000.0 << endl;
     return 0;
 }
