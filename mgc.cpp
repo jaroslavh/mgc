@@ -138,7 +138,7 @@ float evaluateNewNode(int arr[], int new_index)
 void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
 // i is the index to be filled in
 {
-    int sequential_threshold = 8;
+    int sequential_threshold = 16;
     if (prev_ones > max_ones) return;
     if (fill_index - prev_ones > n - max_ones) return;
 
@@ -185,7 +185,7 @@ void solve(int fill_index, int* current_solution, float prev_val, int prev_ones)
 
 void ompSolve(int *curr_sol)
 {
-    #pragma omp parallel
+    #pragma omp parallel num_threads(20)
     {
         #pragma omp single
         {
@@ -210,6 +210,8 @@ int main(int argc, char* argv[])
 
     // MASTER PROCESS
     if (proc_num == 0) {
+        double t1, t2;
+        t1 = MPI_Wtime();
         // queue population
         deque<vector<int> *> q;
         vector<int> * first = new vector<int>({0});
@@ -251,6 +253,8 @@ int main(int argc, char* argv[])
             }
         }        
 
+        t2 = MPI_Wtime();
+        printf("Time: %1.2f\n", t2-t1);fflush(stdout);
         printf("Result %.3f \n", BEST_VAL);
     //SLAVE PROCESS
     } else {
